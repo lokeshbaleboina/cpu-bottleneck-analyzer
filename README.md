@@ -1,8 +1,8 @@
-# CPU Bottleneck Analyzer
+# CPU Performance Analyzer
 
 ## Overview
 
-The **CPU Bottleneck Analyzer** is a low-level systems project designed to **intentionally create, measure, and distinguish different performance bottlenecks** in a Linux environment.
+The **CPU Performance Analyzer** is a low-level systems project designed to **intentionally create, measure, and distinguish different performance bottlenecks** in a Linux environment.
 
 Instead of guessing why a program is slow, this project demonstrates a **measurement-driven approach** using Linux performance counters (`perf`) to classify bottlenecks into:
 
@@ -121,27 +121,105 @@ perf stat ./analyzer memory
 perf stat ./analyzer thread
 ```
 ---
-## Observations & Inference
 
-**CPU Bottleneck**
-- ~1.0 CPU utilized
-- Very low context switches
-- Very low page faults
+## Linux Profiling & Bottleneck Interpretation
+
+This section demonstrates how **real-world Linux performance profiling** is done using
+measured data instead of assumptions.
+
+We use `perf stat` to correlate:
+- wall-clock time
+- user vs kernel execution
+- scheduling behavior
+- memory activity
+
+---
+
+## Understanding Time Breakdown
+
+Linux execution time is split into:
+
+- **User time** (`user`):  
+  Time spent executing application code in user space.
+
+- **System time** (`sys`):  
+  Time spent executing kernel code (syscalls, memory management, scheduling).
+
+- **Elapsed time** (`time elapsed`):  
+  Real wall-clock time as observed by the user.
+
+Key rule:
+- If `user ≫ sys` → compute-bound
+- If `sys` is significant → kernel / memory / syscall heavy
+- If elapsed time ≪ total user time → parallel execution
+
+---
+
+## CPU Bottleneck Analysis
+
+### Command Used
+```bash
+perf stat ./analyzer cpu
+```
+**Observed Metrics**
+- CPUs utilized: ~0.99
+- Context switches: very low
+- CPU migrations: 0
+- Page faults: low
+- User time ≈ elapsed time
+- System time ≈ 0
+
+**Interpretation**
+- Single thread fully occupies one CPU core
+- Minimal kernel involvement
+- No scheduling contention
+- No memory pressure
   
-**Inference:** Compute-bound workload
+**Conclusion**
+- Compute-bound workload
+- CPU execution units are the limiting factor.
 
-**Memory Bottleneck**
-- High page faults
-- Higher system time
-  
-**Inference:** Memory-bound workload
+## Memory Bottleneck Analysis
+### Command Used
+```bash
+perf stat ./analyzer memory
+```
+**Observed Metrics**
 
-**Thread Bottleneck**
-- CPU utilization > 1.0
-- High context switches
+- CPUs utilized: ~1.0
+- Page faults: extremely high
+- System time > user time
+- Context switches: low
+
+**Interpretation**
+- Frequent memory accesses miss cache
+- Kernel frequently handles page faults
+- CPU often stalls waiting for memory
+
+**Conclusion**
+- Memory-bound workload
+- Memory subsystem (cache / RAM) is the bottleneck, not compute.
+
+## Threading & Scheduling Bottleneck Analysis
+### Command Used
+```bash
+perf stat ./analyzer thread
+```
+**Observed Metrics**
+- CPUs utilized: > 3.0
+- Context switches: very high
 - CPU migrations observed
-  
-**Inference:** Scheduling / contention bottleneck
+- User time ≫ elapsed time
+
+**Interpretation**
+- Multiple threads running concurrently
+- Oversubscription of CPU cores
+- Scheduler frequently context-switches threads
+- Threads migrate between cores
+
+**Conclusion**
+- Scheduling / contention bottleneck
+- The Linux scheduler overhead dominates execution time.
 
 ---
 ## Metric → Bottleneck Mapping
